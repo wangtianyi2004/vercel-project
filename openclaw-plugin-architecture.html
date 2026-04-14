@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw Langfuse Plugin 架构图</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0e14;
+    --surface: #131620;
+    --surface-2: #1a1e2e;
+    --border: #262d40;
+    --border-glow: rgba(99, 132, 255, 0.15);
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-muted: #475569;
+    --blue: #6384ff;
+    --blue-soft: rgba(99, 132, 255, 0.12);
+    --purple: #a78bfa;
+    --purple-soft: rgba(167, 139, 250, 0.10);
+    --green: #34d399;
+    --green-soft: rgba(52, 211, 153, 0.10);
+    --amber: #fbbf24;
+    --amber-soft: rgba(251, 191, 36, 0.08);
+    --rose: #fb7185;
+    --rose-soft: rgba(251, 113, 133, 0.08);
+    --cyan: #22d3ee;
+    --cyan-soft: rgba(34, 211, 238, 0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 132, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 132, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page { position: relative; z-index: 1; padding: 48px 32px 64px; max-width: 1200px; margin: 0 auto; }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 56px;
+    animation: fadeDown 0.6s ease-out;
+  }
+
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  header .badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border: 1px solid rgba(99, 132, 255, 0.2);
+    padding: 6px 16px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+  }
+
+  header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+
+  header p {
+    color: var(--text-dim);
+    font-size: 15px;
+    font-weight: 300;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
+
+  /* Architecture container */
+  .arch {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  /* Layer styles */
+  .layer {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    background: var(--surface);
+    animation: fadeUp 0.5s ease-out both;
+  }
+
+  .layer:nth-child(1) { animation-delay: 0.15s; }
+  .layer:nth-child(2) { animation-delay: 0.3s; margin-top: -1px; border-top-left-radius: 0; border-top-right-radius: 0; }
+  .layer:nth-child(3) { animation-delay: 0.45s; margin-top: -1px; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .layer-tag {
+    position: absolute;
+    top: -1px;
+    left: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 0 0 8px 8px;
+    font-weight: 600;
+  }
+
+  .layer-tag.blue { background: var(--blue); color: #0c0e14; }
+  .layer-tag.purple { background: var(--purple); color: #0c0e14; }
+  .layer-tag.rose { background: var(--rose); color: #0c0e14; }
+
+  /* Top layer: request flow */
+  .request-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 20px 0 8px;
+    flex-wrap: wrap;
+  }
+
+  .node {
+    padding: 14px 24px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid;
+    white-space: nowrap;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+  }
+
+  .node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  .node.user { background: var(--blue-soft); border-color: rgba(99,132,255,0.25); color: var(--blue); }
+  .node.agent { background: var(--purple-soft); border-color: rgba(167,139,250,0.25); color: var(--purple); min-width: 220px; text-align: center; }
+  .node.agent .sub { display: block; font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+  .node.llm { background: var(--amber-soft); border-color: rgba(251,191,36,0.2); color: var(--amber); }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    color: var(--text-muted);
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .flow-arrow svg { width: 40px; height: 16px; }
+
+  /* Vertical connector */
+  .v-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    margin: -1px 0;
+    position: relative;
+    z-index: 2;
+  }
+
+  .v-connector .line {
+    width: 2px;
+    height: 32px;
+    background: linear-gradient(to bottom, var(--purple), var(--blue));
+    position: relative;
+  }
+
+  .v-connector .line::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--blue);
+  }
+
+  .v-connector .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-top: 6px;
+  }
+
+  /* Plugin interior */
+  .plugin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.3fr;
+    gap: 16px;
+    padding-top: 16px;
+  }
+
+  .plugin-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .plugin-card:hover {
+    border-color: rgba(99, 132, 255, 0.25);
+    box-shadow: 0 0 30px var(--border-glow);
+  }
+
+  .plugin-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .plugin-card h3 .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot.green { background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.4); }
+  .dot.cyan { background: var(--cyan); box-shadow: 0 0 8px rgba(34,211,238,0.4); }
+  .dot.purple { background: var(--purple); box-shadow: 0 0 8px rgba(167,139,250,0.4); }
+
+  .hook-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .hook-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--green-soft);
+    color: var(--green);
+    border: 1px solid rgba(52, 211, 153, 0.15);
+  }
+
+  .ctx-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .ctx-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: var(--cyan-soft);
+    color: var(--cyan);
+    border: 1px solid rgba(34, 211, 238, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ctx-item::before {
+    content: '›';
+    font-weight: 700;
+    opacity: 0.5;
+  }
+
+  /* Exporter card nested */
+  .exporter-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .exporter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .exporter-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--purple-soft);
+    color: var(--purple);
+    border: 1px solid rgba(167,139,250,0.15);
+    white-space: nowrap;
+  }
+
+  .exporter-arrow {
+    color: var(--text-muted);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .exporter-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 10px;
+    line-height: 1.6;
+    padding-left: 2px;
+  }
+
+  /* Bottom layer: Langfuse */
+  .langfuse-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 12px 0 4px;
+    flex-wrap: wrap;
+  }
+
+  .langfuse-node {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 28px;
+    border-radius: 12px;
+    background: var(--rose-soft);
+    border: 1px solid rgba(251, 113, 133, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .langfuse-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(251, 113, 133, 0.1);
+  }
+
+  .langfuse-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--rose), #e879a0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: #0c0e14;
+    flex-shrink: 0;
+  }
+
+  .langfuse-info .name { font-size: 16px; font-weight: 600; color: var(--rose); }
+  .langfuse-info .desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  .protocol-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px dashed rgba(251, 113, 133, 0.3);
+    color: var(--rose);
+    background: transparent;
+    letter-spacing: 0.5px;
+  }
+
+  /* Steps section */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 48px;
+    animation: fadeUp 0.5s ease-out 0.6s both;
+  }
+
+  .step {
+    padding: 20px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    transition: border-color 0.3s, transform 0.2s;
+  }
+
+  .step:hover {
+    border-color: rgba(99,132,255,0.2);
+    transform: translateY(-2px);
+  }
+
+  .step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .step:nth-child(1) .step-num { color: var(--blue); }
+  .step:nth-child(2) .step-num { color: var(--green); }
+  .step:nth-child(3) .step-num { color: var(--purple); }
+  .step:nth-child(4) .step-num { color: var(--rose); }
+
+  .step-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .step-desc { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+  /* Responsive */
+  @media (max-width: 860px) {
+    .plugin-grid { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: repeat(2, 1fr); }
+    header h1 { font-size: 28px; }
+    .request-flow { gap: 8px; }
+  }
+
+  @media (max-width: 520px) {
+    .page { padding: 24px 16px 48px; }
+    .steps { grid-template-columns: 1fr; }
+    .langfuse-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="badge">Architecture Overview</div>
+    <h1>OpenClaw Langfuse Plugin</h1>
+    <p>通过 OpenTelemetry 协议，将 Agent 执行全链路 Trace 数据上报至 Langfuse 可视化平台</p>
+  </header>
+
+  <div class="arch">
+
+    <!-- Layer 1: Gateway -->
+    <div class="layer">
+      <div class="layer-tag blue">Gateway</div>
+      <div class="request-flow">
+        <div class="node user">用户消息</div>
+        <div class="flow-arrow">
+          <svg viewBox="0 0 40 16"><path d="M0 8h32M28 3l6 5-6 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="node agent">
+          Agent 执行引擎
+          <span class="sub">触发各种 Hook</span>
+        </div>
+        <div class="flow-arrow">
+          <svg viewBox="0 0 40 16"><path d="M0 8h32M28 3l6 5-6 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="node llm">LLM 调用</div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="v-connector">
+      <div class="line"></div>
+      <div class="label">Hook 事件流</div>
+    </div>
+
+    <!-- Layer 2: Plugin -->
+    <div class="layer">
+      <div class="layer-tag purple">Plugin</div>
+      <div class="plugin-grid">
+
+        <!-- Hook 注册层 -->
+        <div class="plugin-card">
+          <h3><span class="dot green"></span>Hook 注册层</h3>
+          <div class="hook-list">
+            <span class="hook-item">message_received</span>
+            <span class="hook-item">llm_input</span>
+            <span class="hook-item">llm_output</span>
+            <span class="hook-item">before_tool_call</span>
+            <span class="hook-item">after_tool_call</span>
+            <span class="hook-item">agent_end</span>
+          </div>
+        </div>
+
+        <!-- TraceContext -->
+        <div class="plugin-card">
+          <h3><span class="dot cyan"></span>TraceContext 内存管理</h3>
+          <div class="ctx-list">
+            <div class="ctx-item">contextByChannelId</div>
+            <div class="ctx-item">contextByRunId</div>
+            <div class="ctx-item">contextsByChannelId</div>
+            <div class="ctx-item">pendingToolCalls</div>
+            <div class="ctx-item">traceTaskQueueByTraceId</div>
+          </div>
+        </div>
+
+        <!-- LangfuseExporter -->
+        <div class="plugin-card">
+          <h3><span class="dot purple"></span>LangfuseExporter</h3>
+          <div class="exporter-stack">
+            <div class="exporter-row">
+              <span class="exporter-badge">openSpans: Map&lt;id, Span&gt;</span>
+            </div>
+            <div class="exporter-row">
+              <span class="exporter-badge">BasicTracerProvider</span>
+              <span class="exporter-arrow">→</span>
+              <span class="exporter-badge">BatchSpanProcessor</span>
+            </div>
+            <div class="exporter-row">
+              <span class="exporter-badge" style="margin-left: auto;">OTLPTraceExporter</span>
+            </div>
+          </div>
+          <div class="exporter-desc">
+            Span 操作：createSpan · startSpan · endSpanById · export
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="v-connector">
+      <div class="line" style="background: linear-gradient(to bottom, var(--purple), var(--rose));"></div>
+      <div class="label" style="color: var(--rose); border-color: rgba(251,113,133,0.2);">HTTP POST · OTLP</div>
+    </div>
+
+    <!-- Layer 3: Langfuse -->
+    <div class="layer">
+      <div class="layer-tag rose">Destination</div>
+      <div class="langfuse-row">
+        <div class="langfuse-node">
+          <div class="langfuse-icon">Lf</div>
+          <div class="langfuse-info">
+            <div class="name">Langfuse Cloud</div>
+            <div class="desc">接收 OTLP 数据，展示 Trace 可视化</div>
+          </div>
+        </div>
+        <div class="protocol-badge">OpenTelemetry Protocol</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-title">Hook 触发</div>
+      <div class="step-desc">OpenClaw 执行过程中触发各种 Hook 事件</div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-title">Span 创建</div>
+      <div class="step-desc">插件拦截 Hook，创建 / 更新 Span 数据</div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-title">批量上报</div>
+      <div class="step-desc">LangfuseExporter 通过 OTel SDK 批量上报</div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-title">Trace 可视化</div>
+      <div class="step-desc">Langfuse 接收 OTLP 数据，展示完整链路</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
